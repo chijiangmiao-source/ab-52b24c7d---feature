@@ -89,10 +89,20 @@ button {
   cursor: pointer;
 }
 button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--border); }
 button.primary { background: var(--accent); color: #0d1117; font-weight: 700; }
 button.warn { color: var(--warn); border-color: var(--warn); }
 button.danger { color: var(--danger); border-color: var(--danger); }
 button.mini { padding: 2px 10px; font-size: 12px; margin-left: 8px; }
+button.pick {
+  padding: 3px 10px;
+  font-size: 12px;
+  border-color: var(--border);
+  color: var(--muted);
+}
+button.pick.on { border-color: var(--ok); color: var(--ok); }
+button.pick.retired { border-style: dashed; color: var(--danger); }
+button.pick.retired.on { border-color: var(--ok); color: var(--ok); }
 
 .hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
 
@@ -138,10 +148,36 @@ button.mini { padding: 2px 10px; font-size: 12px; margin-left: 8px; }
   font-size: 12px;
 }
 .entry.pending { border-left-color: var(--warn); }
+.entry.config { border-left-color: var(--accent); }
+.entry .cfg { color: var(--accent); }
 .entry .idx { color: var(--accent); font-weight: 700; min-width: 34px; }
 .entry .rid { color: var(--warn); }
 .entry .pl { color: var(--fg); word-break: break-all; }
 .entry .tm { color: var(--muted); margin-left: auto; white-space: nowrap; }
+
+.mig-stage {
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+.mig-lists { display: flex; gap: 18px; flex-wrap: wrap; }
+.mig-list { flex: 1; min-width: 220px; }
+.mig-list h3 { margin-top: 8px; }
+
+.node-tags { display: inline-flex; gap: 4px; }
+.tag {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 7px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.tag-voter { border-color: var(--ok); color: var(--ok); }
+.tag-retired { border-color: var(--danger); color: var(--danger); }
+.tag-old { border-color: var(--warn); color: var(--warn); }
+.tag-new { border-color: var(--accent); color: var(--accent); }
 
 .nodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .node {

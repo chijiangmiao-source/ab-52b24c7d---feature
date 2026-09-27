@@ -67,9 +67,50 @@
     </section>
 
     <section class="panel">
-      <h2>④ 共识状态 <button id="btn-refresh" class="mini">刷新</button></h2>
+      <h2>④ 名单迁移（联合共识）</h2>
+      <div class="row">
+        <label>迁移标识
+          <input id="mig-id" placeholder="如 retire-n3" maxlength="40" />
+        </label>
+        <button id="btn-mig-begin" class="warn">提交迁移（进入联合配置）</button>
+      </div>
+      <div class="kv" id="mig-target-row">
+        <div>目标投票节点 <span id="mig-target" class="chips"></span></div>
+      </div>
+      <p class="hint">退役旧法定成员须经联合配置：配置条目必须同时获得旧名单与新名单多数确认后，
+        才能「完成最终切换」。迁移期间普通指令也按联合多数确认。</p>
+      <div class="mig-stage">
+        <div>阶段 <b id="mig-phase">—</b></div>
+        <div class="mig-lists">
+          <div class="mig-list">
+            <h3>旧名单（法定成员）<span id="mig-old-majority" class="hint"></span></h3>
+            <div id="mig-old-voters" class="chips"></div>
+            <h3>已确认节点</h3>
+            <div id="mig-old-confirmed" class="chips"></div>
+          </div>
+          <div class="mig-list">
+            <h3>新名单（目标集合）<span id="mig-new-majority" class="hint"></span></h3>
+            <div id="mig-new-voters" class="chips"></div>
+            <h3>已确认节点</h3>
+            <div id="mig-new-confirmed" class="chips"></div>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="btn-mig-finalize" class="primary">完成最终切换（提交 C_new）</button>
+        <button id="btn-mig-abort" class="danger">中止迁移（回到旧名单）</button>
+      </div>
+      <pre id="mig-result" class="result">—</pre>
+    </section>
+
+    <section class="panel">
+      <h2>⑤ 共识状态 <button id="btn-refresh" class="mini">刷新</button></h2>
       <div class="kv">
+        <div>现役投票名单 <span id="active-config" class="chips"></span></div>
+        <div>已退役节点 <span id="retired-nodes" class="chips"></span></div>
         <div>已提交序号 <b id="committed-index">—</b></div>
+      </div>
+      <div class="kv">
         <div>最近确认节点 <span id="last-commit" class="chips"></span></div>
       </div>
       <h3>已提交序列</h3>

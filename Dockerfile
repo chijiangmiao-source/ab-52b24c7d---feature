@@ -14,6 +14,7 @@ RUN node --check src/cluster.js \
  && node --check src/server.js \
  && node --check public/app.js \
  && node --check test/cluster.test.js \
+ && node --check test/migration.test.js \
  && node --check verify/smoke.js
 
 EXPOSE 8080

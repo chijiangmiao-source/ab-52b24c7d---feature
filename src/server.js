@@ -14,6 +14,12 @@
  *   POST   /api/commands       {controllerId, term, requestId, payload, crash?}
  *                                        提交指令；crash=true 时在多数确认落盘后、
  *                                        响应前退出进程，模拟主控崩溃。
+ *   POST   /api/migrations     {controllerId, term, migrationId, voters, crash?}
+ *                                        提交名单迁移：进入联合配置 C_old,new。
+ *   POST   /api/migrations/:id/finalize {controllerId, term, crash?}
+ *                                        双名单多数确认后提交 C_new 完成最终切换。
+ *   POST   /api/migrations/:id/abort    {controllerId, term}
+ *                                        中止迁移：旧名单多数确认回滚到 C_old。
  */
 
 const http = require('http');
@@ -131,6 +137,37 @@ async function route(req, res) {
       return; // 故意不响应
     }
     return sendJson(res, result.status === 'committed' ? 200 : 202, result);
+  }
+
+  // 提交带稳定迁移标识与目标投票节点集合的名单迁移：编队进入联合配置。
+  if (m === 'POST' && p === '/api/migrations') {
+    const body = await readBody(req);
+    const result = cluster.beginMigration(body);
+    if (body.crash === true) {
+      // 联合配置条目落盘后、响应前退出：重启须恢复唯一的 joint 阶段。
+      setTimeout(() => process.exit(1), 50);
+      return;
+    }
+    return sendJson(res, 200, result);
+  }
+
+  const migFinalize = p.match(/^\/api\/migrations\/([A-Za-z0-9_.:-]+)\/finalize$/);
+  if (m === 'POST' && migFinalize) {
+    const body = await readBody(req);
+    const result = cluster.finalizeMigration({ ...body, migrationId: migFinalize[1] });
+    if (body.crash === true) {
+      // C_new 已落盘、响应前退出：重启后现役名单必须已切换且重传只返回原结论。
+      setTimeout(() => process.exit(1), 50);
+      return;
+    }
+    return sendJson(res, 200, result);
+  }
+
+  const migAbort = p.match(/^\/api\/migrations\/([A-Za-z0-9_.:-]+)\/abort$/);
+  if (m === 'POST' && migAbort) {
+    const body = await readBody(req);
+    const result = cluster.abortMigration({ ...body, migrationId: migAbort[1] });
+    return sendJson(res, 200, result);
   }
 
   if (m === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(res, 'index.html');
