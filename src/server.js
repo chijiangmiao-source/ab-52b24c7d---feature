@@ -14,6 +14,10 @@
  *   POST   /api/commands       {controllerId, term, requestId, payload, crash?}
  *                                        提交指令；crash=true 时在多数确认落盘后、
  *                                        响应前退出进程，模拟主控崩溃。
+ *   POST   /api/migrations     {controllerId, term, migrationId, targetVoterIds, crash?}
+ *                                        提交联合共识名单迁移（旧/新双名单多数确认）
+ *   POST   /api/migrations/abort {controllerId, term}
+ *                                        中止未获联合多数确认的在途迁移
  */
 
 const http = require('http');
@@ -131,6 +135,22 @@ async function route(req, res) {
       return; // 故意不响应
     }
     return sendJson(res, result.status === 'committed' ? 200 : 202, result);
+  }
+
+  if (m === 'POST' && p === '/api/migrations') {
+    const body = await readBody(req);
+    const result = cluster.beginMigration(body);
+    if (body.crash === true) {
+      // 联合配置已持久落盘、响应尚未发出：此刻退出进程，演练「重启恢复唯一迁移阶段」。
+      setTimeout(() => process.exit(1), 50);
+      return; // 故意不响应
+    }
+    return sendJson(res, result.status === 'committed' ? 200 : 202, result);
+  }
+
+  if (m === 'POST' && p === '/api/migrations/abort') {
+    const body = await readBody(req);
+    return sendJson(res, 200, cluster.abortMigration(body));
   }
 
   if (m === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(res, 'index.html');

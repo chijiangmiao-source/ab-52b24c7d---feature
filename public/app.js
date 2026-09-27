@@ -6,6 +6,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   health: $('health-badge'),
   term: $('term-badge'),
+  config: $('config-badge'),
   leader: $('leader-badge'),
   size: $('cluster-size'),
   create: $('btn-create'),
@@ -22,6 +23,17 @@ const els = {
   cmdCrash: $('cmd-crash'),
   submit: $('btn-submit'),
   result: $('cmd-result'),
+  migId: $('mig-id'),
+  migTargets: $('mig-targets'),
+  migCrash: $('mig-crash'),
+  migrate: $('btn-migrate'),
+  migrateAbort: $('btn-migrate-abort'),
+  migPhase: $('mig-phase-val'),
+  migOld: $('mig-old'),
+  migNew: $('mig-new'),
+  migOldAcks: $('mig-old-acks'),
+  migNewAcks: $('mig-new-acks'),
+  migResult: $('mig-result'),
   refresh: $('btn-refresh'),
   committedIndex: $('committed-index'),
   lastCommit: $('last-commit'),
@@ -90,6 +102,7 @@ async function refreshState() {
 
   if (!state.initialized) {
     els.term.textContent = '现役任期: —';
+    els.config.textContent = '配置: —';
     els.leader.textContent = '主控: —';
     els.leaseState.textContent = '—';
     els.leaseRemaining.textContent = '—';
@@ -98,10 +111,14 @@ async function refreshState() {
     els.lastCommit.innerHTML = chip('—', true);
     els.committedSeq.innerHTML = '<span class="hint">尚未创建编队，请先在 ① 创建。</span>';
     els.nodes.innerHTML = '';
+    renderMigration(null);
     return;
   }
 
   els.term.textContent = `现役任期: ${state.activeTerm}`;
+  const joint = !!(state.migration && state.migration.phase === 'joint');
+  els.config.textContent = joint ? '配置: 联合 (C_old,new)' : '配置: 稳定';
+  els.config.className = joint ? 'badge badge-warn' : 'badge badge-ok';
   els.leader.textContent = `主控: ${state.leader || '—'}`;
   els.leader.className = state.leaseValid ? 'badge badge-ok' : 'badge badge-muted';
   els.leaseState.textContent = state.leaseValid ? '有效' : '已失效';
@@ -125,13 +142,21 @@ async function refreshState() {
     const log = n.log.length
       ? n.log.map((e) => entryHtml(e, e.index <= state.committedIndex)).join('')
       : '<div class="empty">（空日志）</div>';
+    const role = n.retiring
+      ? '<span class="tag tag-retire">退役中</span>'
+      : n.joining
+        ? '<span class="tag tag-join">新名单</span>'
+        : state.migration && n.inOldConfig
+          ? '<span class="tag tag-old">旧名单</span>'
+          : '';
     return `<div class="node${n.reachable ? '' : ' down'}">
       <div class="node-head">
         <b>${n.id}</b>
+        <span class="node-role">${role}
         <label class="switch" title="可达性">
           <input type="checkbox" data-node="${n.id}" ${n.reachable ? 'checked' : ''} />
           <span class="slider"></span>
-        </label>
+        </label></span>
       </div>
       ${log}
     </div>`;
@@ -150,7 +175,42 @@ async function refreshState() {
     });
   });
 
+  renderMigration(state.migration);
+
   if (!els.cmdTerm.value) els.cmdTerm.value = state.activeTerm;
+}
+
+function rosterChips(ids, ackIds) {
+  const ack = new Set(ackIds || []);
+  return ids.map((id) => {
+    if (ack.size === 0) return chip(id, true);
+    return `<span class="chip${ack.has(id) ? '' : ' chip-pending'}">${id}${ack.has(id) ? ' ✓' : ''}</span>`;
+  }).join('');
+}
+
+function renderMigration(mig) {
+  if (!mig) {
+    els.migPhase.textContent = '稳定（无在途迁移）';
+    els.migPhase.style.color = 'var(--ok)';
+    els.migOld.innerHTML = chip('—', true);
+    els.migNew.innerHTML = chip('—', true);
+    els.migOldAcks.innerHTML = chip('—', true);
+    els.migNewAcks.innerHTML = chip('—', true);
+    return;
+  }
+  els.migPhase.textContent = `联合阶段（配置条目 #${mig.index}，${mig.oldConfirmed && mig.newConfirmed ? '双名单多数已确认' : '等待双名单多数'}）`;
+  els.migPhase.style.color = mig.canFinalize ? 'var(--ok)' : 'var(--warn)';
+  els.migOld.innerHTML = rosterChips(mig.oldRoster, mig.oldAck);
+  els.migNew.innerHTML = rosterChips(mig.newRoster, mig.newAck);
+  els.migOldAcks.innerHTML =
+    `${rosterChips(mig.oldRoster, mig.oldAck)} <span class="hint">${mig.oldAck.length}/${mig.oldRoster.length}（需 ${mig.oldMajority}）</span>`;
+  els.migNewAcks.innerHTML =
+    `${rosterChips(mig.newRoster, mig.newAck)} <span class="hint">${mig.newAck.length}/${mig.newRoster.length}（需 ${mig.newMajority}）</span>`;
+}
+
+function showMigResult(data, isErr) {
+  els.migResult.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  els.migResult.className = isErr ? 'result err' : 'result ok';
 }
 
 function showResult(data, isErr) {
@@ -224,6 +284,50 @@ els.submit.addEventListener('click', async () => {
 });
 
 els.refresh.addEventListener('click', refreshState);
+
+els.migrate.addEventListener('click', async () => {
+  const targets = els.migTargets.value.split(',').map((s) => s.trim()).filter(Boolean);
+  const body = {
+    controllerId: els.controller.value.trim(),
+    term: parseInt(els.cmdTerm.value, 10),
+    migrationId: els.migId.value.trim(),
+    targetVoterIds: targets,
+    crash: els.migCrash.checked,
+  };
+  try {
+    const r = await api('/api/migrations', 'POST', body);
+    showMigResult(r, false);
+    if (r.status === 'committed') {
+      toast(r.duplicate ? `重传：迁移 ${r.migrationId} 原结论已完成` : `迁移 ${r.migrationId} 已完成最终名单切换`);
+    } else {
+      toast(r.duplicate ? '重传：仍处于联合阶段（原结论）' : '已进入联合配置，等待双名单多数确认');
+    }
+  } catch (e) {
+    if (e instanceof TypeError && body.crash) {
+      showMigResult('联合配置落盘后进程已退出（模拟崩溃），等待重启后刷新查看迁移恢复阶段', false);
+    } else {
+      showMigResult(e.data ? e.data : e.message, true);
+      toast(`迁移被拒: ${e.message}`, true);
+    }
+  }
+  refreshState();
+});
+
+els.migrateAbort.addEventListener('click', async () => {
+  const body = {
+    controllerId: els.controller.value.trim(),
+    term: parseInt(els.cmdTerm.value, 10),
+  };
+  try {
+    const r = await api('/api/migrations/abort', 'POST', body);
+    showMigResult(r, false);
+    toast(`迁移 ${r.migrationId} 已中止，回到旧名单单一名单确认规则`);
+  } catch (e) {
+    showMigResult(e.data ? e.data : e.message, true);
+    toast(`中止失败: ${e.message}`, true);
+  }
+  refreshState();
+});
 
 refreshState();
 setInterval(refreshState, 2000);

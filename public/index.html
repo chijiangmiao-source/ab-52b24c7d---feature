@@ -12,6 +12,7 @@
     <div class="header-badges">
       <span id="health-badge" class="badge badge-muted">健康: …</span>
       <span id="term-badge" class="badge badge-term">现役任期: —</span>
+      <span id="config-badge" class="badge badge-muted">配置: 稳定</span>
       <span id="leader-badge" class="badge badge-muted">主控: —</span>
     </div>
   </header>
@@ -67,7 +68,33 @@
     </section>
 
     <section class="panel">
-      <h2>④ 共识状态 <button id="btn-refresh" class="mini">刷新</button></h2>
+      <h2>④ 名单迁移（联合共识）</h2>
+      <div class="row">
+        <label>迁移标识 <input id="mig-id" placeholder="如 mig-retire-n3" /></label>
+        <label class="grow">目标投票节点（逗号分隔）
+          <input id="mig-targets" placeholder="如 n1,n2,n4" />
+        </label>
+      </div>
+      <div class="row">
+        <label class="chk"><input id="mig-crash" type="checkbox" /> 联合配置落盘后模拟崩溃</label>
+        <button id="btn-migrate" class="primary">提交迁移</button>
+        <button id="btn-migrate-abort" class="warn">中止在途迁移</button>
+      </div>
+      <div class="kv" id="mig-phase">
+        <div>阶段 <b id="mig-phase-val">—</b></div>
+        <div>旧名单 <span id="mig-old" class="chips"></span></div>
+        <div>新名单 <span id="mig-new" class="chips"></span></div>
+      </div>
+      <div class="kv">
+        <div>旧名单确认 <span id="mig-old-acks" class="chips"></span></div>
+        <div>新名单确认 <span id="mig-new-acks" class="chips"></span></div>
+      </div>
+      <pre id="mig-result" class="result">—</pre>
+      <p class="hint">迁移先进入联合配置：配置条目与普通指令都必须同时获得旧名单、新名单各自多数确认；双名单多数凑齐后才完成最终名单切换。任一名单多数不可达时可恢复节点后自动推进，或由现役主控中止迁移。</p>
+    </section>
+
+    <section class="panel">
+      <h2>⑤ 共识状态 <button id="btn-refresh" class="mini">刷新</button></h2>
       <div class="kv">
         <div>已提交序号 <b id="committed-index">—</b></div>
         <div>最近确认节点 <span id="last-commit" class="chips"></span></div>

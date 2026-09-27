@@ -2,7 +2,8 @@
 
 /**
  * HTTP 冒烟验收：对任期申请、指令提交、健康路径执行端到端检查。
- * 覆盖：多数确认后崩溃重启、旧主控迟到栅栏、重传冲突、多数不可达、追赶收敛。
+ * 覆盖：多数确认后崩溃重启、旧主控迟到栅栏、重传冲突、多数不可达、追赶收敛、
+ * 联合共识名单迁移（双名单确认/崩溃恢复唯一阶段/失败迁移中止后的兼容提交）。
  * 以退出码报告验收结果：0 通过，1 失败。
  */
 
@@ -153,6 +154,133 @@ async function main() {
   s = (await req('GET', '/api/state')).data;
   ok('最终收敛：四指令全节点一致', logsOf(s).every((l) => l.join() === 'cmd-1,cmd-2,cmd-3,cmd-4'), logsOf(s));
   ok('最终健康路径 200', (await req('GET', '/health')).status === 200);
+
+  // 10. 联合共识名单迁移（HTTP 端到端）
+  console.log('[11] 联合共识：双名单确认后退役 n3');
+  await req('POST', '/api/nodes/n3/reachability', { reachable: true });
+  r = await req('POST', '/api/migrations', {
+    controllerId: 'C', term: 3, migrationId: 'mig-http-1', targetVoterIds: ['n1', 'n2', 'n4'],
+  });
+  ok('新增 n4：全体可达时双名单多数当场达成 -> committed/stable',
+    r.status === 200 && r.data.status === 'committed' && r.data.phase === 'stable', r);
+  s = (await req('GET', '/api/state')).data;
+  ok('现役名单切换为 n1,n2,n4，n3 已退役', JSON.stringify(s.config.voters) === JSON.stringify(['n1', 'n2', 'n4']), s.config);
+  ok('状态接口暴露稳定阶段且无在途迁移', s.config.phase === 'stable' && s.migration === null, s.config);
+  ok('迁移结论含旧/新名单与各自确认节点',
+    JSON.stringify(r.data.oldRoster) === JSON.stringify(['n1', 'n2', 'n3']) &&
+    JSON.stringify(r.data.newRoster) === JSON.stringify(['n1', 'n2', 'n4']) &&
+    Array.isArray(r.data.confirmedByOld) && Array.isArray(r.data.confirmedByNew), r.data);
+
+  // 连续第二个迁移：退役 n4、加入 n5（目标 n1,n2,n5）。
+  r = await req('POST', '/api/migrations', {
+    controllerId: 'C', term: 3, migrationId: 'mig-http-2', targetVoterIds: ['n1', 'n2', 'n5'],
+  });
+  ok('第二个迁移全体可达时 committed', r.status === 200 && r.data.status === 'committed', r);
+
+  // 扩到 4 节点名单 n1,n2,n5,n6，作为后续僵持场景的旧名单。
+  r = await req('POST', '/api/nodes/n6/reachability', { reachable: true });
+  ok('对尚未入编节点设置可达性返回 400', r.status === 400, r.data);
+  r = await req('POST', '/api/migrations', {
+    controllerId: 'C', term: 3, migrationId: 'mig-http-3', targetVoterIds: ['n1', 'n2', 'n5', 'n6'],
+  });
+  ok('新增 n6 全体可达 -> committed，名单 4 节点', r.status === 200 && r.data.status === 'committed', r);
+  s = (await req('GET', '/api/state')).data;
+  ok('现役名单 n1,n2,n5,n6', JSON.stringify(s.config.voters) === JSON.stringify(['n1', 'n2', 'n5', 'n6']), s.config);
+
+  // 11. 确定性僵持：提案前先让旧名单 [n1,n2,n5,n6] 掉成少数（仅 n1,n2 可达），
+  //     目标 [n1,n2,n7] 的新名单 3 节点全可达 -> 旧名单多数 3 缺失，迁移确定停在 joint。
+  console.log('[12] 联合僵持：普通指令按双名单多数被拦，崩溃后恢复唯一阶段');
+  await req('POST', '/api/nodes/n5/reachability', { reachable: false });
+  await req('POST', '/api/nodes/n6/reachability', { reachable: false });
+  r = await req('POST', '/api/migrations', {
+    controllerId: 'C', term: 3, migrationId: 'mig-http-stuck', targetVoterIds: ['n1', 'n2', 'n7'],
+  });
+  ok('旧名单多数缺失 -> 202/joint', r.status === 202 && r.data.status === 'joint' && r.data.phase === 'joint', r);
+  ok('迁移结论给出双名单确认进度', r.data.oldConfirmed === false && r.data.newConfirmed === true && r.data.canFinalize === false, r.data);
+  s = (await req('GET', '/api/state')).data;
+  ok('僵持期间现役名单/任期不变',
+    JSON.stringify(s.config.voters) === JSON.stringify(['n1', 'n2', 'n5', 'n6']) &&
+    s.config.phase === 'joint' && s.activeTerm === 3, s.config);
+  ok('状态接口经真实字段暴露旧、新名单与各自确认节点',
+    s.migration && JSON.stringify(s.migration.oldRoster) === JSON.stringify(['n1', 'n2', 'n5', 'n6']) &&
+    JSON.stringify(s.migration.newRoster) === JSON.stringify(['n1', 'n2', 'n7']) &&
+    JSON.stringify(s.migration.oldAck) === JSON.stringify(['n1', 'n2']) &&
+    JSON.stringify(s.migration.newAck.sort()) === JSON.stringify(['n1', 'n2', 'n7']), s.migration);
+
+  // 联合期间普通姿态指令：即便新名单 3/3 全确认，旧名单多数缺失也不得提交。
+  r = await req('POST', '/api/commands', {
+    controllerId: 'C', term: 3, requestId: 'cmd-joint-http', payload: 'attitude:hold',
+  });
+  ok('联合期间普通指令缺旧名单多数 -> accepted 不提交（双名单多数规则）',
+    r.status === 202 && r.data.status === 'accepted' && r.data.quorum === 'joint', r);
+  s = (await req('GET', '/api/state')).data;
+  ok('联合僵持期间 committedIndex 不前进', !s.committedSequence.some((e) => e.requestId === 'cmd-joint-http'), s.committedIndex);
+
+  // 僵持状态下让进程在持久化之后、响应之前退出（同标识重传携带 crash）。
+  let migCrashed = false;
+  try {
+    await fetch(`${APP}/api/migrations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        controllerId: 'C', term: 3, migrationId: 'mig-http-stuck',
+        targetVoterIds: ['n1', 'n2', 'n7'], crash: true,
+      }),
+    });
+  } catch (_) { migCrashed = true; }
+  ok('僵持状态重传迁移后进程退出（模拟崩溃）', migCrashed);
+  ok('重启后健康路径恢复', await waitHealth(30000));
+  s = (await req('GET', '/api/state')).data;
+  ok('重启从持久日志恢复唯一联合阶段（同一迁移标识，名单/任期不变）',
+    s.migration && s.migration.phase === 'joint' && s.migration.migrationId === 'mig-http-stuck' &&
+    s.activeTerm === 3 && JSON.stringify(s.config.voters) === JSON.stringify(['n1', 'n2', 'n5', 'n6']), s.migration);
+
+  // 重传只返回原结论：同标识同目标 duplicate=joint，不重复追加配置条目。
+  r = await req('POST', '/api/migrations', {
+    controllerId: 'C', term: 3, migrationId: 'mig-http-stuck', targetVoterIds: ['n1', 'n2', 'n7'],
+  });
+  ok('重传返回原结论 joint 且 duplicate=true', r.status === 202 && r.data.status === 'joint' && r.data.duplicate === true, r);
+
+  // 恢复旧名单多数（n5 回归，旧名单 3/4）：配置条目与紧随的联合指令按双名单多数一并提交，完成退役。
+  await req('POST', '/api/nodes/n5/reachability', { reachable: true });
+  s = (await req('GET', '/api/state')).data;
+  ok('双名单多数凑齐后最终切换：名单 n1,n2,n7，n5/n6 退役',
+    s.config.phase === 'stable' && s.migration === null &&
+    JSON.stringify(s.config.voters) === JSON.stringify(['n1', 'n2', 'n7']) &&
+    !s.nodes.some((n) => n.id === 'n5' || n.id === 'n6'), s.config);
+  ok('联合期间的普通指令按联合多数一并提交', s.committedSequence.some((e) => e.requestId === 'cmd-joint-http'), s.lastCommit);
+  ok('最近提交记录标注 joint 双名单确认', s.lastCommit && s.lastCommit.quorum === 'joint', s.lastCommit);
+
+  // 12. 失败迁移：新名单多数不可达 -> 中止 -> 名单/任期/日志不变 -> 兼容提交恢复
+  console.log('[13] 失败迁移中止后的兼容提交');
+  await req('POST', '/api/nodes/n2/reachability', { reachable: false });
+  await req('POST', '/api/nodes/n7/reachability', { reachable: false });
+  // 旧名单 [n1,n2,n7] 仅 n1 可达（多数 2 缺失）；新名单 [n1,n2,n7,n8] 仅 n1,n8（多数 3 缺失）。
+  r = await req('POST', '/api/migrations', {
+    controllerId: 'C', term: 3, migrationId: 'mig-http-fail', targetVoterIds: ['n1', 'n2', 'n7', 'n8'],
+  });
+  ok('双名单多数均缺失 -> 202/joint', r.status === 202 && r.data.status === 'joint', r);
+  const stuckIndex = (await req('GET', '/api/state')).data.committedIndex;
+  r = await req('POST', '/api/migrations/abort', { controllerId: 'C', term: 3 });
+  ok('中止僵持迁移 200/aborted', r.status === 200 && r.data.status === 'aborted', r);
+  s = (await req('GET', '/api/state')).data;
+  ok('中止后现役名单仍 n1,n2,n7、任期 3、阶段稳定',
+    JSON.stringify(s.config.voters) === JSON.stringify(['n1', 'n2', 'n7']) &&
+    s.config.phase === 'stable' && s.activeTerm === 3 && s.migration === null, s.config);
+  ok('中止后 n8 移除、联合尾部截断（committedIndex 不变）',
+    !s.nodes.some((n) => n.id === 'n8') && s.committedIndex === stuckIndex, { committedIndex: s.committedIndex, stuckIndex });
+
+  // 失败迁移之后的兼容提交：恢复旧名单可达即按单一名单多数规则提交。
+  await req('POST', '/api/nodes/n2/reachability', { reachable: true });
+  await req('POST', '/api/nodes/n7/reachability', { reachable: true });
+  r = await req('POST', '/api/commands', {
+    controllerId: 'C', term: 3, requestId: 'cmd-post-fail', payload: 'burn:resume:2s',
+  });
+  ok('失败迁移后兼容提交：旧名单多数确认 committed', r.status === 200 && r.data.status === 'committed', r);
+  s = (await req('GET', '/api/state')).data;
+  ok('兼容指令进入全部现役节点日志', s.nodes.every((n) => n.log.some((e) => e.requestId === 'cmd-post-fail')), logsOf(s));
+
+  ok('收尾健康路径 200', (await req('GET', '/health')).status === 200);
 
   console.log(`\n[smoke] 通过 ${passed} 项，失败 ${failed} 项`);
   process.exit(failed === 0 ? 0 : 1);

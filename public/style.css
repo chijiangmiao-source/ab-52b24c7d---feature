@@ -47,6 +47,7 @@ h3 { font-size: 13px; margin: 14px 0 8px; color: var(--muted); }
 .badge-term { color: #0d1117; background: var(--accent); border-color: var(--accent); font-weight: 700; }
 .badge-ok { color: var(--ok); border-color: var(--ok); }
 .badge-bad { color: var(--danger); border-color: var(--danger); }
+.badge-warn { color: var(--warn); border-color: var(--warn); background: #1c1608; }
 
 main {
   display: grid;
@@ -109,6 +110,7 @@ button.mini { padding: 2px 10px; font-size: 12px; margin-left: 8px; }
   font-size: 12px;
 }
 .chip.muted { border-color: var(--border); color: var(--muted); }
+.chip-pending { border-color: var(--warn); color: var(--warn); }
 
 .result {
   background: #0d1117;
@@ -153,6 +155,11 @@ button.mini { padding: 2px 10px; font-size: 12px; margin-left: 8px; }
 .node.down { opacity: 0.55; border-style: dashed; }
 .node-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .node-head b { color: var(--accent); }
+.node-role { display: inline-flex; align-items: center; gap: 8px; }
+.tag { font-size: 11px; border-radius: 8px; padding: 1px 7px; border: 1px solid; }
+.tag-retire { color: var(--danger); border-color: var(--danger); }
+.tag-join { color: var(--accent); border-color: var(--accent); }
+.tag-old { color: var(--muted); border-color: var(--border); }
 .node .entry { padding: 4px 8px; margin-bottom: 4px; }
 .node .empty { color: var(--muted); font-size: 12px; }
 
