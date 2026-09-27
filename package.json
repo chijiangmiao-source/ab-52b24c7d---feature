@@ -1,0 +1,11 @@
+{
+  "name": "orbital-formation-consensus",
+  "version": "1.0.0",
+  "private": true,
+  "description": "轨道编队主控切换共识模拟：任期/租约/栅栏/幂等指令提交 + 值班员控制台",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/",
+    "verify": "node --test test/ && node verify/smoke.js"
+  }
+}

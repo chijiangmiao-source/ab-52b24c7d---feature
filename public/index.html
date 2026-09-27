@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>轨道编队控制台</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>🛰 轨道编队控制台</h1>
+    <div class="header-badges">
+      <span id="health-badge" class="badge badge-muted">健康: …</span>
+      <span id="term-badge" class="badge badge-term">现役任期: —</span>
+      <span id="leader-badge" class="badge badge-muted">主控: —</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>① 编队创建</h2>
+      <div class="row">
+        <label>节点规模
+          <select id="cluster-size">
+            <option value="3" selected>3 节点</option>
+            <option value="4">4 节点</option>
+            <option value="5">5 节点</option>
+          </select>
+        </label>
+        <button id="btn-create">创建编队</button>
+        <button id="btn-reset" class="danger">清空</button>
+      </div>
+      <p class="hint">创建三至五个模拟控制节点；重复创建将重置编队。</p>
+    </section>
+
+    <section class="panel">
+      <h2>② 任期与租约</h2>
+      <div class="row">
+        <label>控制器标识
+          <input id="controller-id" value="A" maxlength="16" />
+        </label>
+        <button id="btn-term">申请任期</button>
+        <button id="btn-revoke" class="warn">使租约失效</button>
+      </div>
+      <div class="kv">
+        <div>租约状态 <b id="lease-state">—</b></div>
+        <div>剩余 <b id="lease-remaining">—</b></div>
+        <div>任期法定节点 <span id="term-quorum" class="chips"></span></div>
+      </div>
+      <p class="hint">申请任期需多数节点可达；他人租约未失效时将被拒绝，可先「使租约失效」模拟主控失联。</p>
+    </section>
+
+    <section class="panel">
+      <h2>③ 指令提交</h2>
+      <div class="row">
+        <label>任期 <input id="cmd-term" type="number" min="0" /></label>
+        <label>请求标识 <input id="cmd-request-id" placeholder="如 req-001" /></label>
+      </div>
+      <div class="row">
+        <label class="grow">指令内容 <input id="cmd-payload" placeholder="如 burn:prograde:12s" /></label>
+      </div>
+      <div class="row">
+        <label class="chk"><input id="cmd-crash" type="checkbox" /> 多数确认后模拟崩溃（响应前退出）</label>
+        <button id="btn-submit" class="primary">提交指令</button>
+      </div>
+      <pre id="cmd-result" class="result">—</pre>
+    </section>
+
+    <section class="panel">
+      <h2>④ 共识状态 <button id="btn-refresh" class="mini">刷新</button></h2>
+      <div class="kv">
+        <div>已提交序号 <b id="committed-index">—</b></div>
+        <div>最近确认节点 <span id="last-commit" class="chips"></span></div>
+      </div>
+      <h3>已提交序列</h3>
+      <div id="committed-seq" class="seq">—</div>
+      <h3>各节点已接受的指令序列</h3>
+      <div id="nodes" class="nodes"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+services:
+  app:
+    build: .
+    image: orbital-formation-app
+    environment:
+      PORT: 8080
+      DATA_DIR: /data
+      LEASE_MS: ${LEASE_MS:-120000}
+    volumes:
+      - app-data:/data
+    ports:
+      # 可配置宿主机端口：HOST_PORT=9090 docker compose up app
+      - "${HOST_PORT:-8080}:8080"
+    # 崩溃（多数确认后退出）后自动拉起，验证重启恢复
+    restart: on-failure
+
+  verify:
+    image: orbital-formation-app
+    build: .
+    depends_on:
+      - app
+    environment:
+      APP_URL: http://app:8080
+    # 代码测试（多数确认后崩溃/旧主控迟到/重传冲突）+ HTTP 冒烟（任期/指令/健康）
+    # 结束后以退出码报告验收结果
+    entrypoint: ["sh", "-c", "node --test test/ && node verify/smoke.js"]
+
+volumes:
+  app-data:
